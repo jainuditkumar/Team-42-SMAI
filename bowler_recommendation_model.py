@@ -364,6 +364,7 @@ class CricketModelManager:
                                      bins=[0, 40, 70, 100], 
                                      labels=['low', 'medium', 'high'], 
                                      include_lowest=True)
+        
         df['wind_category'] = pd.cut(df['wind_speed'], 
                                  bins=[0, 10, 20, 100], 
                                  labels=['light', 'moderate', 'strong'], 
@@ -944,8 +945,6 @@ def predict_with_model(args):
                                  labels=['powerplay', 'middle', 'death'], 
                                  include_lowest=True)
     
-    # ... (Economy feature calculations remain unchanged)
-    
     df['venue_fast_economy'] = df.apply(
         lambda row: manager.get_type_venue_economy('fast', row['venue']), axis=1
     )
@@ -1058,9 +1057,31 @@ def predict_with_model(args):
     
     df['recommended_bowler_type'] = predictions
     
+    # Calculate expected runs if --runs is enabled
+    if args.runs:
+        expected_runs = []
+        for idx, row in df.iterrows():
+            bowler_type = predictions[idx]
+            # Get economy rates for the predicted bowler type under given conditions
+            economies = [
+                manager.performance_analyzer.type_venue_economy.get((bowler_type, row['venue']), 0),
+                manager.performance_analyzer.type_soil_economy.get((bowler_type, row['soil_type']), 0),
+                manager.performance_analyzer.type_phase_economy.get((bowler_type, row['over_type']), 0),
+                manager.performance_analyzer.type_weather_economy['temp'].get((bowler_type, row['temp_category']), 0),
+                manager.performance_analyzer.type_weather_economy['humidity'].get((bowler_type, row['humidity_category']), 0),
+                manager.performance_analyzer.type_weather_economy['wind'].get((bowler_type, row['wind_category']), 0)
+            ]
+            valid_economies = [e for e in economies if e != 0]
+            avg_economy = np.mean(valid_economies) if valid_economies else ref_df['averagerunsperover'].mean()
+            # Expected runs = economy rate (runs per over) * 1 over
+            expected_runs.append(round(avg_economy, 2))
+        df['expected_runs'] = expected_runs
+    
     if args.predict_from_input:
         print("\nPrediction Result:")
         print(f"Recommended Bowler Type: {predictions[0]}")
+        if args.runs:
+            print(f"Expected Runs Conceded (per over): {df['expected_runs'].iloc[0]:.2f}")
         if args.percentage:
             print("\nLikelihood of Each Bowler Type:")
             for class_name, prob in zip(manager.class_names, probabilities[0]):
@@ -1074,6 +1095,10 @@ def predict_with_model(args):
         print("\nPrediction Summary:")
         for bowler_type, count in prediction_counts.items():
             print(f"{bowler_type}: {count}")
+        
+        if args.runs:
+            print("\nExpected Runs Summary:")
+            print(df['expected_runs'].describe())
     
     return df
 
@@ -1107,6 +1132,7 @@ def main():
     predict_parser.add_argument("--output_file", type=str, default="predictions.csv", help="Path to save predictions")
     predict_parser.add_argument("--predict_from_input", action="store_true", help="Predict from command line input instead of file")
     predict_parser.add_argument("--percentage", action="store_true", help="Show percentage likelihood of each bowler type")
+    predict_parser.add_argument("--runs", action="store_true", help="Show expected runs conceded by the recommended bowler")
     predict_parser.add_argument("--temperature", type=float, default=30.0, help="Temperature in Celsius")
     predict_parser.add_argument("--humidity", type=float, default=60.0, help="Humidity percentage")
     predict_parser.add_argument("--precipitation", type=float, default=0.0, help="Precipitation in mm")
