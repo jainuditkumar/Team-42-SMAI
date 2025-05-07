@@ -1,0 +1,15 @@
+{
+    "mode": "train",
+    "data_file": "final.csv",
+    "seed": 42,
+    "output_dir": "outputs",
+    "batch_size": 32,
+    "epochs": 50,
+    "learning_rate": 0.0005,
+    "patience": 10,
+    "d_model": 128,
+    "nhead": 4,
+    "num_layers": 3,
+    "dim_feedforward": 256,
+    "dropout": 0.1
+}
